@@ -1,4 +1,4 @@
-package com.eventcommerce.venue.domain;
+package com.eventcommerce.catalog.domain;
 
 import com.eventcommerce.common.domain.MediaType;
 import lombok.Getter;
@@ -11,17 +11,23 @@ import java.util.UUID;
 
 @Getter
 @Setter
-@Table("venue_media")
-public class VenueMedia {
+@Table("product_media")
+public class ProductMedia {
 
     @Id
     private UUID id;
 
-    private UUID venueId;
+    private UUID productId;
 
     private String mediaUrl;
 
     private MediaType mediaType;
+
+    private ProductMediaUsageType usageType;
+
+    private String altText;
+
+    private String thumbnailUrl;
 
     private Integer displayOrder;
 

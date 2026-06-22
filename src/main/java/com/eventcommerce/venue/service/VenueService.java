@@ -3,6 +3,7 @@ package com.eventcommerce.venue.service;
 import com.eventcommerce.common.exception.ConflictException;
 import com.eventcommerce.common.exception.ResourceNotFoundException;
 import com.eventcommerce.tenant.repository.TenantRepository;
+import com.eventcommerce.venue.domain.Venue;
 import com.eventcommerce.venue.dto.CreateVenueRequest;
 import com.eventcommerce.venue.dto.UpdateVenueRequest;
 import com.eventcommerce.venue.dto.VenueResponse;

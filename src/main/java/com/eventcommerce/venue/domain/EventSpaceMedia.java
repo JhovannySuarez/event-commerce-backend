@@ -1,5 +1,6 @@
 package com.eventcommerce.venue.domain;
 
+import com.eventcommerce.common.domain.MediaType;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.annotation.Id;

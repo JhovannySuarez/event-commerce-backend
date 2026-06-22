@@ -1,4 +1,4 @@
-package com.eventcommerce.venue.domain;
+package com.eventcommerce.common.domain;
 
 public enum MediaType {
 

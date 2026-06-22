@@ -1,6 +1,5 @@
-package com.eventcommerce.venue.domain;
+package com.eventcommerce.calendar.domain;
 
-import com.eventcommerce.common.domain.MediaType;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.annotation.Id;
@@ -11,23 +10,17 @@ import java.util.UUID;
 
 @Getter
 @Setter
-@Table("venue_media")
-public class VenueMedia {
+@Table("calendar_event_spaces")
+public class CalendarEventSpace {
 
     @Id
     private UUID id;
 
-    private UUID venueId;
+    private UUID calendarEventId;
 
-    private String mediaUrl;
-
-    private MediaType mediaType;
-
-    private Integer displayOrder;
+    private UUID eventSpaceId;
 
     private boolean active;
 
     private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
 }
