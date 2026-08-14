@@ -1,28 +1,24 @@
-# Event Commerce SaaS
+# Event Planner
 
-Multi-tenant SaaS platform for event venues.
+AI-powered platform to help customers discover, compare and book the perfect venue for their events.
 
-## Stack
+## Vision
+
+See the documentation under `/docs`.
+
+## Tech Stack
 
 - Java 21
-- Spring Boot 3
-- Spring Data JDBC
+- Spring Boot
 - PostgreSQL
 - Flyway
 - Angular
 - GitHub Actions
 
-## Modules
+## Documentation
 
-- Tenant
-- Venue
-- EventSpace
-- Catalog
-- Quotation
-- Payment
-- Tax
-- Supplier
-
-## Run locally
-
-mvn spring-boot:run
+- Product Vision
+- Roadmap
+- Architecture
+- Database
+- API
