@@ -1,4 +1,4 @@
-package com.eventcommerce.calendar.domain;
+package com.eventcommerce.venue.domain;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -10,27 +10,21 @@ import java.util.UUID;
 
 @Getter
 @Setter
-@Table("event_types")
-public class EventType {
+@Table("event_space_event_types")
+public class EventSpaceEventType {
 
     @Id
     private UUID id;
 
-    private UUID tenantId;
+    private UUID eventSpaceId;
 
-    private String name;
+    private UUID eventTypeId;
 
-    private String description;
+    private BookingMode bookingMode;
 
-    private Integer minimumDurationHours;
-
-    private String color;
-
-    private boolean requiresFullVenue;
+    private Integer minimumHours;
 
     private boolean active;
 
     private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
 }

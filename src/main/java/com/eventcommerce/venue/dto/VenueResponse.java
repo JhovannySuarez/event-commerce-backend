@@ -10,8 +10,7 @@ public record VenueResponse(
         String slug,
         String description,
         String address,
-        String city,
-        String country,
+        UUID cityId,
         boolean active,
         LocalDateTime createdAt,
         LocalDateTime updatedAt

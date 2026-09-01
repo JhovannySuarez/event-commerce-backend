@@ -5,6 +5,7 @@ import lombok.Setter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -36,8 +37,7 @@ public class Venue {
      * Physical address.
      */
     private String address;
-    private String city;
-    private String country;
+    private UUID cityId;
     private String phone;
     private String email;
 
@@ -65,6 +65,9 @@ public class Venue {
      * Featured venue.
      */
     private boolean highlighted;
+
+    private BigDecimal averageRating;
+    private Integer reviewCount;
 
     /**
      * Soft delete flag.

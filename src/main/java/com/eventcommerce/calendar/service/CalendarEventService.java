@@ -4,10 +4,11 @@ import com.eventcommerce.calendar.domain.*;
 import com.eventcommerce.calendar.dto.CalendarEventResponse;
 import com.eventcommerce.calendar.dto.CreateCalendarEventRequest;
 import com.eventcommerce.calendar.repository.CalendarEventSpaceRepository;
-import com.eventcommerce.calendar.repository.EventTypeRepository;
 import com.eventcommerce.calendar.repository.VenueCalendarEventRepository;
 import com.eventcommerce.common.exception.BadRequestException;
 import com.eventcommerce.common.exception.ResourceNotFoundException;
+import com.eventcommerce.eventtype.domain.EventType;
+import com.eventcommerce.eventtype.repository.EventTypeRepository;
 import com.eventcommerce.tenant.repository.TenantRepository;
 import com.eventcommerce.venue.domain.EventSpace;
 import com.eventcommerce.venue.domain.Venue;
@@ -17,7 +18,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -52,7 +52,6 @@ public class CalendarEventService {
         }
 
         validateDates(request.startAt(), request.endAt());
-        validateMinimumDuration(eventType, request.startAt(), request.endAt());
 
         List<EventSpace> eventSpaces = request.eventSpaceIds()
                 .stream()
@@ -105,16 +104,6 @@ public class CalendarEventService {
     private void validateDates(LocalDateTime startAt, LocalDateTime endAt) {
         if (!endAt.isAfter(startAt)) {
             throw new BadRequestException("endAt must be after startAt");
-        }
-    }
-
-    private void validateMinimumDuration(EventType eventType, LocalDateTime startAt, LocalDateTime endAt) {
-        long durationHours = Duration.between(startAt, endAt).toHours();
-
-        if (durationHours < eventType.getMinimumDurationHours()) {
-            throw new BadRequestException(
-                    "Event duration must be at least " + eventType.getMinimumDurationHours() + " hours"
-            );
         }
     }
 

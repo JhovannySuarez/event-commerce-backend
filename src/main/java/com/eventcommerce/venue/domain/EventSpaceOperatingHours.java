@@ -5,35 +5,25 @@ import lombok.Setter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.UUID;
 
 @Getter
 @Setter
-@Table("event_spaces")
-public class EventSpace {
+@Table("event_space_operating_hours")
+public class EventSpaceOperatingHours {
 
     @Id
     private UUID id;
 
-    private UUID venueId;
+    private UUID eventSpaceId;
 
-    private String name;
+    private String dayOfWeek;
 
-    private String description;
+    private LocalTime operatingFrom;
 
-    private Integer capacityMin;
-
-    private Integer capacityMax;
-
-    private BigDecimal basePrice;
-
-    private Integer displayOrder;
-
-    private boolean highlighted;
-
-    private boolean active;
+    private LocalTime operatingUntil;
 
     private LocalDateTime createdAt;
 

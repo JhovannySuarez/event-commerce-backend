@@ -39,8 +39,6 @@ public class VenueService {
         venue.setSlug(normalizedSlug);
         venue.setDescription(request.description());
         venue.setAddress(request.address());
-        venue.setCity(request.city());
-        venue.setCountry(request.country());
         venue.setActive(true);
         venue.setCreatedAt(LocalDateTime.now());
         venue.setUpdatedAt(LocalDateTime.now());
@@ -89,8 +87,6 @@ public class VenueService {
         venue.setSlug(normalizedSlug);
         venue.setDescription(request.description());
         venue.setAddress(request.address());
-        venue.setCity(request.city());
-        venue.setCountry(request.country());
         venue.setActive(request.active());
         venue.setUpdatedAt(LocalDateTime.now());
 
@@ -123,8 +119,7 @@ public class VenueService {
                 venue.getSlug(),
                 venue.getDescription(),
                 venue.getAddress(),
-                venue.getCity(),
-                venue.getCountry(),
+                venue.getCityId(),
                 venue.isActive(),
                 venue.getCreatedAt(),
                 venue.getUpdatedAt()
