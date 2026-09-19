@@ -4,7 +4,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record AvailableDate(
-        LocalDate date,
-        List<AvailableSpace> availableSpaces
+        LocalDate availableDate,
+        Long availableHours,
+        List<AvailableSlot> availableSlots
 ) {
 }

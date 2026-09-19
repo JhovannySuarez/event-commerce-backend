@@ -6,7 +6,6 @@ import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 public interface VenueSearchRepository {
@@ -25,8 +24,7 @@ public interface VenueSearchRepository {
             int requestedGuests,
             LocalDate eventDate,
             int limit,
-            int offset,
-            Set<UUID> excludedVenueIds);
+            int offset);
 
     List<VenueSearchResult> searchQ3(
             UUID cityId,
@@ -34,9 +32,7 @@ public interface VenueSearchRepository {
             int requestedGuests,
             LocalDate eventDate,
             int limit,
-            int offset,
-            Set<UUID> excludedVenueIds
-    );
+            int offset);
 
 
 }

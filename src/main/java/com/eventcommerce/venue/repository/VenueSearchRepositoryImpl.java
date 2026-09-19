@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Repository
@@ -34,199 +35,211 @@ public class VenueSearchRepositoryImpl
         implements VenueSearchRepository {
 
     private static final String EVENT_SPACE_AVAILABILITY_SQL = """
-            SELECT
-                v.id AS venue_id,
-                es.id AS event_space_id,
-                es.name AS event_space_name,
-                es.capacity_min,
-                es.capacity_max,
-                eset.booking_mode,
-                eset.minimum_hours,
-                oh.operating_from,
-                oh.operating_until,
-                COALESCE(
-                    ebc.extension_allowed,
-                    FALSE
-                ) AS extension_allowed,
-                ebc.extension_until,
-                vce.start_at AS event_start_at,
-                vce.end_at AS event_end_at,
-                CAST(:eventDate AS date) AS available_date
-            FROM venues v
-            JOIN event_spaces es
-              ON es.venue_id = v.id
-             AND es.active = TRUE
-            JOIN event_space_event_types eset
-              ON eset.event_space_id = es.id
-             AND eset.event_type_id = :eventTypeId
-             AND eset.active = TRUE
-            JOIN event_space_operating_hours oh
-              ON oh.event_space_id = es.id
-             AND UPPER(oh.day_of_week) =
-                 UPPER(
-                     TRIM(
-                         TO_CHAR(
-                             CAST(:eventDate AS date),
-                             'DAY'
-                         )
+        SELECT
+            v.id AS venue_id,
+            v.address AS venue_address,
+            v.average_rating,
+            v.review_count,
+            es.id AS event_space_id,
+            es.name AS event_space_name,
+            es.description AS event_space_description,
+            es.capacity_min,
+            es.capacity_max,
+            eset.booking_mode,
+            eset.minimum_hours,
+            oh.operating_from,
+            oh.operating_until,
+            COALESCE(
+                ebc.extension_allowed,
+                FALSE
+            ) AS extension_allowed,
+            ebc.extension_until,
+            vce.start_at AS event_start_at,
+            vce.end_at AS event_end_at,
+            CAST(:eventDate AS date) AS available_date
+        FROM venues v
+        JOIN event_spaces es
+          ON es.venue_id = v.id
+         AND es.active = TRUE
+        JOIN event_space_event_types eset
+          ON eset.event_space_id = es.id
+         AND eset.event_type_id = :eventTypeId
+         AND eset.active = TRUE
+        JOIN event_space_operating_hours oh
+          ON oh.event_space_id = es.id
+         AND UPPER(oh.day_of_week) =
+             UPPER(
+                 TRIM(
+                     TO_CHAR(
+                         CAST(:eventDate AS date),
+                         'DAY'
                      )
                  )
-            LEFT JOIN event_space_booking_config ebc
-              ON ebc.event_space_id = es.id
-            LEFT JOIN calendar_event_spaces ces
-              ON ces.event_space_id = es.id
-             AND ces.active = TRUE
-            LEFT JOIN venue_calendar_events vce
-              ON vce.id = ces.calendar_event_id
-             AND vce.active = TRUE
-             AND vce.status IN (
-                 'TENTATIVE',
-                 'CONFIRMED',
-                 'BLOCKED'
              )
-             AND vce.start_at <
-                 (
-                     CAST(:eventDate AS date)
-                     + INTERVAL '1 day'
-                 )
-             AND vce.end_at >
+        LEFT JOIN event_space_booking_config ebc
+          ON ebc.event_space_id = es.id
+        LEFT JOIN calendar_event_spaces ces
+          ON ces.event_space_id = es.id
+         AND ces.active = TRUE
+        LEFT JOIN venue_calendar_events vce
+          ON vce.id = ces.calendar_event_id
+         AND vce.active = TRUE
+         AND vce.status IN (
+             'TENTATIVE',
+             'CONFIRMED',
+             'BLOCKED'
+         )
+         AND vce.start_at <
+             (
                  CAST(:eventDate AS date)
-            WHERE v.active = TRUE
-              AND v.city_id = :cityId
-              AND es.capacity_max >= :requestedGuests
-            """;
+                 + INTERVAL '1 day'
+             )
+         AND vce.end_at >
+             CAST(:eventDate AS date)
+        WHERE v.active = TRUE
+          AND v.city_id = :cityId
+          AND es.capacity_max >= :requestedGuests
+        """;
+
     private static final String EVENT_SPACE_Q2_AVAILABILITY_SQL = """
+        SELECT
+            v.id AS venue_id,
+            v.address AS venue_address,
+            v.average_rating,
+            v.review_count,
+            es.id AS event_space_id,
+            es.name AS event_space_name,
+            es.description AS event_space_description,
+            es.capacity_min,
+            es.capacity_max,
+            eset.booking_mode,
+            eset.minimum_hours,
+            oh.operating_from,
+            oh.operating_until,
+            COALESCE(
+                ebc.extension_allowed,
+                FALSE
+            ) AS extension_allowed,
+            ebc.extension_until,
+            search_dates.available_date,
+            vce.start_at AS event_start_at,
+            vce.end_at AS event_end_at
+        FROM venues v
+        JOIN event_spaces es
+          ON es.venue_id = v.id
+         AND es.active = TRUE
+        JOIN event_space_event_types eset
+          ON eset.event_space_id = es.id
+         AND eset.event_type_id = :eventTypeId
+         AND eset.active = TRUE
+        CROSS JOIN LATERAL (
             SELECT
-                v.id AS venue_id,
-                es.id AS event_space_id,
-                es.name AS event_space_name,
-                es.capacity_min,
-                es.capacity_max,
-                eset.booking_mode,
-                eset.minimum_hours,
-                oh.operating_from,
-                oh.operating_until,
-                COALESCE(
-                    ebc.extension_allowed,
-                    FALSE
-                ) AS extension_allowed,
-                ebc.extension_until,
-                search_dates.available_date,
-                vce.start_at AS event_start_at,
-                vce.end_at AS event_end_at
-            FROM venues v
-            JOIN event_spaces es
-              ON es.venue_id = v.id
-             AND es.active = TRUE
-            JOIN event_space_event_types eset
-              ON eset.event_space_id = es.id
-             AND eset.event_type_id = :eventTypeId
-             AND eset.active = TRUE
-            CROSS JOIN LATERAL (
-                SELECT
-                    generated_date::date AS available_date
-                FROM generate_series(
-                    CAST(:eventDate AS date) - INTERVAL '15 days',
-                    CAST(:eventDate AS date) + INTERVAL '15 days',
-                    INTERVAL '1 day'
-                ) AS generated_date
-            ) search_dates
-            JOIN event_space_operating_hours oh
-              ON oh.event_space_id = es.id
-             AND UPPER(oh.day_of_week) =
-                 UPPER(
-                     TRIM(
-                         TO_CHAR(
-                             search_dates.available_date,
-                             'DAY'
-                         )
+                generated_date::date AS available_date
+            FROM generate_series(
+                CAST(:eventDate AS date) - INTERVAL '15 days',
+                CAST(:eventDate AS date) + INTERVAL '15 days',
+                INTERVAL '1 day'
+            ) AS generated_date
+            WHERE generated_date::date <> CAST(:eventDate AS date)
+        ) search_dates
+        JOIN event_space_operating_hours oh
+          ON oh.event_space_id = es.id
+         AND UPPER(oh.day_of_week) =
+             UPPER(
+                 TRIM(
+                     TO_CHAR(
+                         search_dates.available_date,
+                         'DAY'
                      )
                  )
-            LEFT JOIN event_space_booking_config ebc
-              ON ebc.event_space_id = es.id
-            LEFT JOIN calendar_event_spaces ces
-              ON ces.event_space_id = es.id
-             AND ces.active = TRUE
-            LEFT JOIN venue_calendar_events vce
-              ON vce.id = ces.calendar_event_id
-             AND vce.active = TRUE
-             AND vce.status IN (
-                 'TENTATIVE',
-                 'CONFIRMED',
-                 'BLOCKED'
              )
-             AND vce.start_at <
-                 search_dates.available_date
-                 + INTERVAL '1 day'
-             AND vce.end_at >
-                 search_dates.available_date
-            WHERE v.active = TRUE
-              AND v.city_id = :cityId
-              AND es.capacity_max >= :requestedGuests
-            """;
+        LEFT JOIN event_space_booking_config ebc
+          ON ebc.event_space_id = es.id
+        LEFT JOIN calendar_event_spaces ces
+          ON ces.event_space_id = es.id
+         AND ces.active = TRUE
+        LEFT JOIN venue_calendar_events vce
+          ON vce.id = ces.calendar_event_id
+         AND vce.active = TRUE
+         AND vce.status IN (
+             'TENTATIVE',
+             'CONFIRMED',
+             'BLOCKED'
+         )
+         AND vce.start_at <
+             search_dates.available_date
+             + INTERVAL '1 day'
+         AND vce.end_at >
+             search_dates.available_date
+        WHERE v.active = TRUE
+          AND v.city_id = :cityId
+          AND es.capacity_max >= :requestedGuests
+        """;
 
     private static final String EVENT_SPACE_AVAILABILITY_Q3_SQL = """
-            SELECT
-                v.id AS venue_id,
-                es.id AS event_space_id,
-                es.name AS event_space_name,
-                es.capacity_min,
-                es.capacity_max,
-                eset.booking_mode,
-                eset.minimum_hours,
-                oh.operating_from,
-                oh.operating_until,
-                COALESCE(
-                    ebc.extension_allowed,
-                    FALSE
-                ) AS extension_allowed,
-                ebc.extension_until,      
-                vce.start_at AS event_start_at,
-                vce.end_at AS event_end_at,
-                CAST(:eventDate AS date) AS available_date
-            FROM venues v 
-            JOIN event_spaces es
-              ON es.venue_id = v.id
-             AND es.active = TRUE
-            JOIN event_space_event_types eset
-              ON eset.event_space_id = es.id
-             AND eset.event_type_id = :eventTypeId
-             AND eset.active = TRUE
-            JOIN event_space_operating_hours oh
-              ON oh.event_space_id = es.id
-             AND UPPER(oh.day_of_week) =
-                 UPPER(
-                     TRIM(
-                         TO_CHAR(
-                             CAST(:eventDate AS date),
-                             'DAY'
-                         )
+        SELECT
+            v.id AS venue_id,
+            v.address AS venue_address,
+            v.average_rating,
+            v.review_count,
+            es.id AS event_space_id,
+            es.name AS event_space_name,
+            es.description AS event_space_description,
+            es.capacity_min,
+            es.capacity_max,
+            eset.booking_mode,
+            eset.minimum_hours,
+            oh.operating_from,
+            oh.operating_until,
+            COALESCE(
+                ebc.extension_allowed,
+                FALSE
+            ) AS extension_allowed,
+            ebc.extension_until,
+            vce.start_at AS event_start_at,
+            vce.end_at AS event_end_at,
+            CAST(:eventDate AS date) AS available_date
+        FROM venues v
+        JOIN event_spaces es
+          ON es.venue_id = v.id
+         AND es.active = TRUE
+        JOIN event_space_event_types eset
+          ON eset.event_space_id = es.id
+         AND eset.event_type_id = :eventTypeId
+         AND eset.active = TRUE
+        JOIN event_space_operating_hours oh
+          ON oh.event_space_id = es.id
+         AND UPPER(oh.day_of_week) =
+             UPPER(
+                 TRIM(
+                     TO_CHAR(
+                         CAST(:eventDate AS date),
+                         'DAY'
                      )
                  )
-            LEFT JOIN event_space_booking_config ebc
-              ON ebc.event_space_id = es.id  
-            LEFT JOIN calendar_event_spaces ces
-              ON ces.event_space_id = es.id
-             AND ces.active = TRUE 
-            LEFT JOIN venue_calendar_events vce
-              ON vce.id = ces.calendar_event_id
-             AND vce.active = TRUE
-             AND vce.status IN (
-                 'TENTATIVE',
-                 'CONFIRMED',
-                 'BLOCKED'
              )
-             AND vce.start_at <
-                 CAST(:eventDate AS date) + INTERVAL '1 day'
-             AND vce.end_at >
-                 CAST(:eventDate AS date)
-            WHERE v.active = TRUE
-              AND v.city_id = :cityId
-              /*
-               * Q3 allows up to 10% below the requested capacity.
-               */
-              AND es.capacity_max >= :minimumCapacity
-            """;
+        LEFT JOIN event_space_booking_config ebc
+          ON ebc.event_space_id = es.id
+        LEFT JOIN calendar_event_spaces ces
+          ON ces.event_space_id = es.id
+         AND ces.active = TRUE
+        LEFT JOIN venue_calendar_events vce
+          ON vce.id = ces.calendar_event_id
+         AND vce.active = TRUE
+         AND vce.status IN (
+             'TENTATIVE',
+             'CONFIRMED',
+             'BLOCKED'
+         )
+         AND vce.start_at <
+             CAST(:eventDate AS date) + INTERVAL '1 day'
+         AND vce.end_at >
+             CAST(:eventDate AS date)
+        WHERE v.active = TRUE
+          AND v.city_id = :cityId
+          AND es.capacity_max >= :minimumCapacity
+          AND es.capacity_max < :requestedGuests
+        """;
 
     // ============================================================
     // Q1
@@ -278,15 +291,6 @@ public class VenueSearchRepositoryImpl
               AND v.id IN (:venueIds)
             """;
 
-    // ============================================================
-    // Helpers
-    // ============================================================
-    private static final String COUNT_AVAILABLE_VENUES_SQL = """
-            SELECT COUNT(*)
-            FROM venues v
-            WHERE v.active = TRUE
-              AND v.id IN (:venueIds)
-            """;
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
     public VenueSearchRepositoryImpl(
@@ -310,26 +314,29 @@ public class VenueSearchRepositoryImpl
                         .addValue("requestedGuests", requestedGuests);
 
         /*
-         * Retrieve all event spaces that could potentially be
-         * available for the requested date.
+         * Retrieve event spaces that could potentially be available
+         * for the requested date and capacity.
          *
-         * Availability is calculated in Java because we need to
-         * merge occupied intervals and calculate the resulting gaps.
+         * Final availability is calculated in Java because occupied
+         * intervals must be merged and the resulting gaps evaluated.
          */
-        List<EventSpaceAvailabilityRow> spaces =
+        List<EventSpaceAvailabilityRow> rows =
                 jdbcTemplate.query(
                         EVENT_SPACE_AVAILABILITY_SQL,
                         params,
                         this::mapEventSpace
                 );
 
-        Map<UUID, List<AvailableSpace>> spacesByVenue =
+        /*
+         * Keep only event spaces that are actually available.
+         */
+        List<AvailableSpace> availableSpaces =
                 buildAvailableSpaces(
-                        spaces,
+                        rows,
                         eventDate
                 );
 
-        if (spacesByVenue.isEmpty()) {
+        if (availableSpaces.isEmpty()) {
             return new PageImpl<>(
                     List.of(),
                     pageable,
@@ -338,78 +345,61 @@ public class VenueSearchRepositoryImpl
         }
 
         /*
-         * Only venues with at least one available event space
-         * participate in pagination.
+         * Metadata for each event space.
+         *
+         * EVENT_SPACE_AVAILABILITY_SQL may return multiple rows for the
+         * same event space because of existing calendar events, so we
+         * keep one representative row per event space.
          */
-        List<UUID> availableVenueIds =
-                new ArrayList<>(
-                        spacesByVenue.keySet()
-                );
-
-        long total =
-                countAvailableVenues(
-                        availableVenueIds
-                );
-
-        if (total == 0) {
-            return new PageImpl<>(
-                    List.of(),
-                    pageable,
-                    0
-            );
-        }
-
-        /*
-         * Pagination happens at venue level.
-         */
-        MapSqlParameterSource venueParams =
-                new MapSqlParameterSource()
-                        .addValue(
-                                "venueIds",
-                                availableVenueIds
-                        )
-                        .addValue(
-                                "limit",
-                                pageable.getPageSize()
-                        )
-                        .addValue(
-                                "offset",
-                                pageable.getOffset()
+        Map<UUID, EventSpaceAvailabilityRow> rowsByEventSpace =
+                rows.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        EventSpaceAvailabilityRow::eventSpaceId,
+                                        Function.identity(),
+                                        (first, ignored) -> first,
+                                        LinkedHashMap::new
+                                )
                         );
 
-        List<VenueRow> venues =
-                jdbcTemplate.query(
-                        VENUE_PAGE_SQL,
-                        venueParams,
-                        this::mapVenue
+        /*
+         * Pagination is performed at event-space level.
+         */
+        int start =
+                Math.toIntExact(
+                        Math.min(
+                                pageable.getOffset(),
+                                availableSpaces.size()
+                        )
+                );
+
+        int end =
+                Math.min(
+                        start + pageable.getPageSize(),
+                        availableSpaces.size()
                 );
 
         List<VenueSearchResult> results =
-                venues.stream()
-                        .map(venue ->
-                                new VenueSearchResult(
-                                        venue.venueId(),
-                                        venue.name(),
-                                        venue.slug(),
-                                        venue.description(),
-                                        venue.address(),
-                                        venue.city(),
-                                        venue.latitude(),
-                                        venue.longitude(),
-                                        venue.averageRating(),
-                                        venue.reviewCount(),
-                                        spacesByVenue.get(
-                                                venue.venueId()
-                                        ),
-                                        List.of()
-                                )
-                        )
+                availableSpaces
+                        .subList(start, end)
+                        .stream()
+                        .map(space -> {
+                            EventSpaceAvailabilityRow row =
+                                    rowsByEventSpace.get(
+                                            space.eventSpaceId()
+                                    );
+
+                            return buildVenueSearchResult(
+                                    row,
+                                    space
+                            );
+                        })
                         .toList();
 
         return new PageImpl<>(
                 results,
                 pageable,
-                total
+                availableSpaces.size()
         );
     }
 
@@ -424,8 +414,7 @@ public class VenueSearchRepositoryImpl
             int requestedGuests,
             LocalDate eventDate,
             int limit,
-            int offset,
-            Set<UUID> excludedVenueIds) {
+            int offset) {
 
         MapSqlParameterSource params =
                 new MapSqlParameterSource()
@@ -435,13 +424,13 @@ public class VenueSearchRepositoryImpl
                         .addValue("eventDate", eventDate);
 
         /*
-         * Retrieve all candidate event spaces for the Q2 date window.
+         * Retrieve candidate event spaces for the Q2 date window.
          *
-         * Q2 keeps capacity strict:
-         *
-         * capacity_max >= requestedGuests
-         *
-         * but allows availability within +/- 15 days.
+         * Q2:
+         * - excludes the exact requested date
+         * - searches +/- 15 days
+         * - keeps capacity strict:
+         *   capacity_max >= requestedGuests
          */
         List<EventSpaceAvailabilityRow> rows =
                 jdbcTemplate.query(
@@ -455,126 +444,121 @@ public class VenueSearchRepositoryImpl
         }
 
         /*
-         * Build:
+         * Calculate actual availability independently for each
+         * event space and date.
          *
-         * date -> venue -> available spaces
+         * Result:
+         *
+         * eventSpaceId -> date -> AvailableSpace
          */
-        Map<LocalDate, Map<UUID, List<AvailableSpace>>>
-                availabilityByDate =
-                buildAvailabilityByDate(rows);
+        Map<UUID, Map<LocalDate, AvailableSpace>> availabilityByEventSpace =
+                buildAvailabilityByEventSpace(rows);
 
-        if (availabilityByDate.isEmpty()) {
+        if (availabilityByEventSpace.isEmpty()) {
             return List.of();
         }
 
         /*
-         * Transform:
-         *
-         * date -> venue -> spaces
-         *
-         * into:
-         *
-         * venue -> date -> spaces
-         *
-         * Also exclude venues already returned by previous tiers.
+         * Keep one representative row per event space.
+         * Metadata such as venue, address and rating is the same
+         * for all rows belonging to the same event space.
          */
-        Map<UUID, Map<LocalDate, List<AvailableSpace>>>
-                availableDatesByVenue =
-                groupAvailabilityByVenue(
-                        availabilityByDate,
-                        excludedVenueIds
-                );
-
-        if (availableDatesByVenue.isEmpty()) {
-            return List.of();
-        }
-
-        /*
-         * Load venue information.
-         */
-        MapSqlParameterSource venueParams =
-                new MapSqlParameterSource()
-                        .addValue(
-                                "venueIds",
-                                new ArrayList<>(
-                                        availableDatesByVenue.keySet()
+        Map<UUID, EventSpaceAvailabilityRow> rowsByEventSpace =
+                rows.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        EventSpaceAvailabilityRow::eventSpaceId,
+                                        Function.identity(),
+                                        (first, ignored) -> first,
+                                        LinkedHashMap::new
                                 )
                         );
 
-        List<VenueRow> venueRows =
-                jdbcTemplate.query(
-                        VENUE_SUMMARY_SQL,
-                        venueParams,
-                        this::mapVenue
-                );
-
         /*
-         * Sort according to the common venue ordering rules:
+         * Sort event spaces by:
          *
-         * 1. Closest available date
-         * 2. Rating DESC
-         * 3. Review count DESC
-         * 4. Name ASC
+         * 1. Closest available date to requested date
+         * 2. Venue rating DESC
+         * 3. Venue review count DESC
+         * 4. Event space name ASC
          */
-        List<VenueRow> orderedVenues =
-                sortVenues(
-                        venueRows,
-                        availableDatesByVenue,
-                        eventDate
-                );
-
-        /*
-         * Pagination happens at venue level.
-         *
-         * We never paginate individual dates.
-         */
-        List<VenueRow> pageVenues =
-                orderedVenues.stream()
+        List<UUID> orderedEventSpaceIds =
+                availabilityByEventSpace.keySet()
+                        .stream()
+                        .sorted(
+                                Comparator
+                                        .comparingLong(
+                                                (UUID eventSpaceId) ->
+                                                        closestDateDistance(
+                                                                availabilityByEventSpace
+                                                                        .get(eventSpaceId)
+                                                                        .keySet(),
+                                                                eventDate
+                                                        )
+                                        )
+                                        .thenComparing(
+                                                eventSpaceId ->
+                                                        rowsByEventSpace
+                                                                .get(eventSpaceId)
+                                                                .averageRating(),
+                                                Comparator.nullsLast(
+                                                        Comparator.reverseOrder()
+                                                )
+                                        )
+                                        .thenComparing(
+                                                eventSpaceId ->
+                                                        rowsByEventSpace
+                                                                .get(eventSpaceId)
+                                                                .reviewCount(),
+                                                Comparator.nullsLast(
+                                                        Comparator.reverseOrder()
+                                                )
+                                        )
+                                        .thenComparing(
+                                                eventSpaceId ->
+                                                        rowsByEventSpace
+                                                                .get(eventSpaceId)
+                                                                .eventSpaceName(),
+                                                Comparator.nullsLast(
+                                                        Comparator.naturalOrder()
+                                                )
+                                        )
+                                        .thenComparing(UUID::toString)
+                        )
                         .skip(offset)
                         .limit(limit)
                         .toList();
 
-        if (pageVenues.isEmpty()) {
-            return List.of();
-        }
+        return orderedEventSpaceIds.stream()
+                .map(eventSpaceId -> {
 
-        /*
-         * Build the final Q2 response.
-         *
-         * Each venue contains all available dates
-         * within the Q2 +/- 15 day window.
-         */
-        return pageVenues.stream()
-                .map(
-                        venue -> {
+                    EventSpaceAvailabilityRow row =
+                            rowsByEventSpace.get(eventSpaceId);
 
-                            Map<LocalDate, List<AvailableSpace>> dates =
-                                    availableDatesByVenue.get(
-                                            venue.venueId()
-                                    );
+                    Map<LocalDate, AvailableSpace> dates =
+                            availabilityByEventSpace.get(eventSpaceId);
 
-                            List<AvailableDate> availableDates =
-                                    buildAvailableDates(
-                                            dates,
-                                            eventDate
-                                    );
-
-                            return new VenueSearchResult(
-                                    venue.venueId(),
-                                    venue.name(),
-                                    venue.slug(),
-                                    venue.description(),
-                                    venue.address(),
-                                    venue.city(),
-                                    venue.latitude(),
-                                    venue.longitude(),
-                                    venue.averageRating(),
-                                    venue.reviewCount(),
-                                    List.of(),
-                                    availableDates
+                    List<AvailableDate> availableDates =
+                            buildAvailableDatesForEventSpace(
+                                    dates,
+                                    eventDate
                             );
-                        }
-                )
+
+                    return new VenueSearchResult(
+                            row.eventSpaceId(),
+                            row.eventSpaceName(),
+                            row.venueId(),
+                            row.description(),
+                            row.address(),
+                            row.averageRating(),
+                            row.reviewCount(),
+                            row.capacityMin(),
+                            row.capacityMax(),
+                            row.bookingMode(),
+                            row.minimumHours(),
+                            availableDates
+                    );
+                })
                 .toList();
     }
 
@@ -585,8 +569,7 @@ public class VenueSearchRepositoryImpl
             int requestedGuests,
             LocalDate eventDate,
             int limit,
-            int offset,
-            Set<UUID> excludedVenueIds) {
+            int offset) {
 
         int minimumCapacity =
                 (int) Math.ceil(requestedGuests * 0.90);
@@ -598,16 +581,26 @@ public class VenueSearchRepositoryImpl
                 eventDate.plusDays(15);
 
         /*
-         * Build:
+         * Q3:
          *
-         * date -> venue -> available spaces
+         * - searches +/- 15 days, including the requested date
+         * - allows event spaces with capacity up to 10% below
+         *   the requested number of guests
          *
-         * Availability is calculated independently for each
-         * date in the Q3 +/- 15 day window.
+         * minimumCapacity <= capacity_max < requestedGuests
          */
-        Map<LocalDate, Map<UUID, List<AvailableSpace>>>
-                availabilityByDate =
-                new TreeMap<>();
+        Map<UUID, Map<LocalDate, AvailableSpace>>
+                availabilityByEventSpace =
+                new LinkedHashMap<>();
+
+        /*
+         * Keep one representative row per event space.
+         *
+         * This provides the Event Space / Venue metadata required
+         * to build VenueSearchResult.
+         */
+        Map<UUID, EventSpaceAvailabilityRow> rowsByEventSpace =
+                new LinkedHashMap<>();
 
         LocalDate currentDate = fromDate;
 
@@ -620,6 +613,10 @@ public class VenueSearchRepositoryImpl
                             .addValue(
                                     "minimumCapacity",
                                     minimumCapacity
+                            )
+                            .addValue(
+                                    "requestedGuests",
+                                    requestedGuests
                             )
                             .addValue(
                                     "eventDate",
@@ -635,17 +632,37 @@ public class VenueSearchRepositoryImpl
 
             if (!rows.isEmpty()) {
 
-                Map<UUID, List<AvailableSpace>> spacesByVenue =
+                /*
+                 * Preserve one row per Event Space for metadata.
+                 */
+                rows.forEach(
+                        row ->
+                                rowsByEventSpace.putIfAbsent(
+                                        row.eventSpaceId(),
+                                        row
+                                )
+                );
+
+                /*
+                 * Calculate actual availability for this date.
+                 */
+                List<AvailableSpace> availableSpaces =
                         buildAvailableSpaces(
                                 rows,
                                 currentDate
                         );
 
-                if (!spacesByVenue.isEmpty()) {
-                    availabilityByDate.put(
-                            currentDate,
-                            spacesByVenue
-                    );
+                for (AvailableSpace space : availableSpaces) {
+
+                    availabilityByEventSpace
+                            .computeIfAbsent(
+                                    space.eventSpaceId(),
+                                    ignored -> new TreeMap<>()
+                            )
+                            .put(
+                                    currentDate,
+                                    space
+                            );
                 }
             }
 
@@ -653,338 +670,145 @@ public class VenueSearchRepositoryImpl
                     currentDate.plusDays(1);
         }
 
-        if (availabilityByDate.isEmpty()) {
+        if (availabilityByEventSpace.isEmpty()) {
             return List.of();
         }
 
         /*
-         * Transform
-         * date -> venue -> spaces
-         * into:
-         * venue -> date -> spaces
-         * Also exclude venues already returned by Q1/Q2.
-         */
-        Map<UUID, Map<LocalDate, List<AvailableSpace>>>
-                availableDatesByVenue =
-                groupAvailabilityByVenue(
-                        availabilityByDate,
-                        excludedVenueIds
-                );
-
-        if (availableDatesByVenue.isEmpty()) {
-            return List.of();
-        }
-
-        /*
-         * Load venue information.
-         */
-        MapSqlParameterSource venueParams =
-                new MapSqlParameterSource()
-                        .addValue(
-                                "venueIds",
-                                new ArrayList<>(
-                                        availableDatesByVenue.keySet()
-                                )
-                        );
-
-        List<VenueRow> venueRows =
-                jdbcTemplate.query(
-                        VENUE_SUMMARY_SQL,
-                        venueParams,
-                        this::mapVenue
-                );
-
-        /*
-         * Sort according to the common venue ordering rules:
+         * Sort Event Spaces by:
          *
          * 1. Closest available date
-         * 2. Rating DESC
-         * 3. Review count DESC
-         * 4. Name ASC
+         * 2. Venue rating DESC
+         * 3. Venue review count DESC
+         * 4. Event Space name ASC
+         * 5. Event Space id ASC
          */
-        List<VenueRow> orderedVenues =
-                sortVenues(
-                        venueRows,
-                        availableDatesByVenue,
-                        eventDate
-                );
-
-        /*
-         * Pagination happens at venue level.
-         *
-         * We never paginate individual dates.
-         */
-        List<VenueRow> pageVenues =
-                orderedVenues.stream()
+        List<UUID> orderedEventSpaceIds =
+                availabilityByEventSpace.keySet()
+                        .stream()
+                        .sorted(
+                                Comparator
+                                        .comparingLong(
+                                                (UUID eventSpaceId) ->
+                                                        closestDateDistance(
+                                                                availabilityByEventSpace
+                                                                        .get(eventSpaceId)
+                                                                        .keySet(),
+                                                                eventDate
+                                                        )
+                                        )
+                                        .thenComparing(
+                                                eventSpaceId ->
+                                                        rowsByEventSpace
+                                                                .get(eventSpaceId)
+                                                                .averageRating(),
+                                                Comparator.nullsLast(
+                                                        Comparator.reverseOrder()
+                                                )
+                                        )
+                                        .thenComparing(
+                                                eventSpaceId ->
+                                                        rowsByEventSpace
+                                                                .get(eventSpaceId)
+                                                                .reviewCount(),
+                                                Comparator.nullsLast(
+                                                        Comparator.reverseOrder()
+                                                )
+                                        )
+                                        .thenComparing(
+                                                eventSpaceId ->
+                                                        rowsByEventSpace
+                                                                .get(eventSpaceId)
+                                                                .eventSpaceName(),
+                                                Comparator.nullsLast(
+                                                        Comparator.naturalOrder()
+                                                )
+                                        )
+                                        .thenComparing(UUID::toString)
+                        )
                         .skip(offset)
                         .limit(limit)
                         .toList();
 
-        if (pageVenues.isEmpty()) {
-            return List.of();
-        }
-
         /*
-         * Build the final Q3 response.
-         *
-         * Each venue contains all available dates
-         * within the Q3 +/- 15 day window.
+         * Build the final Event Space results.
          */
-        return pageVenues.stream()
-                .map(
-                        venue ->
-                                buildVenueSearchResult(
-                                        venue,
-                                        availableDatesByVenue.get(
-                                                venue.venueId()
-                                        ),
-                                        eventDate
-                                )
-                )
-                .toList();
-    }
+        return orderedEventSpaceIds.stream()
+                .map(eventSpaceId -> {
 
-    private Map<LocalDate, Map<UUID, List<AvailableSpace>>> buildAvailabilityByDate(
-            List<EventSpaceAvailabilityRow> rows) {
+                    EventSpaceAvailabilityRow row =
+                            rowsByEventSpace.get(eventSpaceId);
 
-        return rows.stream()
-                .collect(
-                        Collectors.groupingBy(
-                                EventSpaceAvailabilityRow::availableDate,
-                                TreeMap::new,
-                                Collectors.collectingAndThen(
-                                        Collectors.toList(),
-                                        dateRows ->
-                                                buildAvailableSpaces(
-                                                        dateRows,
-                                                        dateRows.getFirst().availableDate()
-                                                )
-                                )
-                        )
-                );
-    }
+                    Map<LocalDate, AvailableSpace> dates =
+                            availabilityByEventSpace.get(eventSpaceId);
 
-    private Map<UUID, Map<LocalDate, List<AvailableSpace>>> groupAvailabilityByVenue(
-            Map<LocalDate, Map<UUID, List<AvailableSpace>>> availabilityByDate,
-            Set<UUID> excludedVenueIds) {
+                    List<AvailableDate> availableDates =
+                            buildAvailableDatesForEventSpace(
+                                    dates,
+                                    eventDate
+                            );
 
-        Map<UUID, Map<LocalDate, List<AvailableSpace>>> result =
-                new LinkedHashMap<>();
-
-        for (Map.Entry<LocalDate, Map<UUID, List<AvailableSpace>>> dateEntry
-                : availabilityByDate.entrySet()) {
-
-            LocalDate availableDate = dateEntry.getKey();
-
-            for (Map.Entry<UUID, List<AvailableSpace>> venueEntry
-                    : dateEntry.getValue().entrySet()) {
-
-                UUID venueId = venueEntry.getKey();
-                List<AvailableSpace> spaces = venueEntry.getValue();
-
-                if (spaces.isEmpty()
-                        || excludedVenueIds != null
-                        && excludedVenueIds.contains(venueId)) {
-                    continue;
-                }
-
-                result.computeIfAbsent(
-                        venueId,
-                        ignored -> new TreeMap<>()
-                ).put(
-                        availableDate,
-                        spaces
-                );
-            }
-        }
-
-        return result;
-    }
-
-    private List<VenueRow> sortVenues(
-            List<VenueRow> venues,
-            Map<UUID, Map<LocalDate, List<AvailableSpace>>> availabilityByVenue,
-            LocalDate requestedDate) {
-
-        return venues.stream()
-                .filter(
-                        venue ->
-                                availabilityByVenue.containsKey(
-                                        venue.venueId()
-                                )
-                )
-                .sorted(
-                        Comparator
-                                .comparing(
-                                        (VenueRow venue) ->
-                                                closestDateDistance(
-                                                        availabilityByVenue.get(
-                                                                venue.venueId()
-                                                        ),
-                                                        requestedDate
-                                                )
-                                )
-                                .thenComparing(
-                                        VenueRow::averageRating,
-                                        Comparator.nullsLast(
-                                                Comparator.reverseOrder()
-                                        )
-                                )
-                                .thenComparing(
-                                        VenueRow::reviewCount,
-                                        Comparator.nullsLast(
-                                                Comparator.reverseOrder()
-                                        )
-                                )
-                                .thenComparing(
-                                        VenueRow::name,
-                                        Comparator.nullsLast(
-                                                Comparator.naturalOrder()
-                                        )
-                                )
-                )
-                .toList();
-    }
-
-    private List<AvailableDate> buildAvailableDates(
-            Map<LocalDate, List<AvailableSpace>> dates,
-            LocalDate requestedDate) {
-
-        return dates.entrySet()
-                .stream()
-                .sorted(
-                        Map.Entry.comparingByKey(
-                                Comparator.comparingLong(
-                                        date ->
-                                                Math.abs(
-                                                        ChronoUnit.DAYS.between(
-                                                                requestedDate,
-                                                                date
-                                                        )
-                                                )
-                                )
-                        )
-                )
-                .map(
-                        entry ->
-                                new AvailableDate(
-                                        entry.getKey(),
-                                        entry.getValue()
-                                )
-                )
+                    return new VenueSearchResult(
+                            row.eventSpaceId(),
+                            row.eventSpaceName(),
+                            row.venueId(),
+                            row.description(),
+                            row.address(),
+                            row.averageRating(),
+                            row.reviewCount(),
+                            row.capacityMin(),
+                            row.capacityMax(),
+                            row.bookingMode(),
+                            row.minimumHours(),
+                            availableDates
+                    );
+                })
                 .toList();
     }
 
     private VenueSearchResult buildVenueSearchResult(
-            VenueRow venue,
-            Map<LocalDate, List<AvailableSpace>> dates,
-            LocalDate requestedDate) {
+            EventSpaceAvailabilityRow row,
+            AvailableSpace space) {
+
+        AvailableDate availableDate =
+                new AvailableDate(
+                        space.availableDate(),
+                        space.availableHours(),
+                        space.availableSlots()
+                );
 
         return new VenueSearchResult(
-                venue.venueId(),
-                venue.name(),
-                venue.slug(),
-                venue.description(),
-                venue.address(),
-                venue.city(),
-                venue.latitude(),
-                venue.longitude(),
-                venue.averageRating(),
-                venue.reviewCount(),
-                List.of(),
-                buildAvailableDates(
-                        dates,
-                        requestedDate
-                )
+                space.eventSpaceId(),
+                space.name(),
+                row.venueId(),
+                row.description(),
+                row.address(),
+                row.averageRating(),
+                row.reviewCount(),
+                space.capacityMin(),
+                space.capacityMax(),
+                space.bookingMode(),
+                space.minimumHours(),
+                List.of(availableDate)
         );
     }
 
     private long closestDateDistance(
-            Map<LocalDate, List<AvailableSpace>> dates,
+            Set<LocalDate> availableDates,
             LocalDate requestedDate) {
 
-        return dates.keySet()
-                .stream()
+        return availableDates.stream()
                 .mapToLong(
                         date ->
                                 Math.abs(
-                                        java.time.temporal.ChronoUnit
-                                                .DAYS
-                                                .between(
-                                                        requestedDate,
-                                                        date
-                                                )
+                                        ChronoUnit.DAYS.between(
+                                                requestedDate,
+                                                date
+                                        )
                                 )
                 )
                 .min()
                 .orElse(Long.MAX_VALUE);
-    }
-
-    private long countAvailableVenues(
-            List<UUID> availableVenueIds) {
-
-        if (availableVenueIds.isEmpty()) {
-            return 0;
-        }
-
-        MapSqlParameterSource params =
-                new MapSqlParameterSource()
-                        .addValue(
-                                "venueIds",
-                                availableVenueIds
-                        );
-
-        Long count =
-                jdbcTemplate.queryForObject(
-                        COUNT_AVAILABLE_VENUES_SQL,
-                        params,
-                        Long.class
-                );
-
-        return count == null ? 0 : count;
-    }
-
-    private VenueRow mapVenue(
-            ResultSet rs,
-            int rowNum) throws SQLException {
-
-        return new VenueRow(
-                rs.getObject(
-                        "venue_id",
-                        UUID.class
-                ),
-                rs.getString(
-                        "venue_name"
-                ),
-                rs.getString(
-                        "venue_slug"
-                ),
-                rs.getString(
-                        "venue_description"
-                ),
-                rs.getString(
-                        "venue_address"
-                ),
-                rs.getString(
-                        "city_name"
-                ),
-                rs.getObject(
-                        "latitude",
-                        Double.class
-                ),
-                rs.getObject(
-                        "longitude",
-                        Double.class
-                ),
-                rs.getObject(
-                        "average_rating",
-                        Double.class
-                ),
-                rs.getObject(
-                        "review_count",
-                        Integer.class
-                )
-        );
     }
 
     private EventSpaceAvailabilityRow mapEventSpace(
@@ -996,12 +820,26 @@ public class VenueSearchRepositoryImpl
                         "venue_id",
                         UUID.class
                 ),
+                rs.getString(
+                        "venue_address"
+                ),
+                rs.getObject(
+                        "average_rating",
+                        Double.class
+                ),
+                rs.getObject(
+                        "review_count",
+                        Integer.class
+                ),
                 rs.getObject(
                         "event_space_id",
                         UUID.class
                 ),
                 rs.getString(
                         "event_space_name"
+                ),
+                rs.getString(
+                        "event_space_description"
                 ),
                 rs.getObject(
                         "capacity_min",
@@ -1049,12 +887,9 @@ public class VenueSearchRepositoryImpl
         );
     }
 
-    private Map<UUID, List<AvailableSpace>> buildAvailableSpaces(
+    private List<AvailableSpace> buildAvailableSpaces(
             List<EventSpaceAvailabilityRow> rows,
             LocalDate eventDate) {
-
-        Map<UUID, List<AvailableSpace>> result =
-                new LinkedHashMap<>();
 
         Map<UUID, List<EventSpaceAvailabilityRow>> grouped =
                 rows.stream()
@@ -1065,6 +900,8 @@ public class VenueSearchRepositoryImpl
                                         Collectors.toList()
                                 )
                         );
+
+        List<AvailableSpace> result = new ArrayList<>();
 
         for (List<EventSpaceAvailabilityRow> spaceRows : grouped.values()) {
 
@@ -1077,14 +914,9 @@ public class VenueSearchRepositoryImpl
                             eventDate
                     );
 
-            if (availableSpace == null) {
-                continue;
+            if (availableSpace != null) {
+                result.add(availableSpace);
             }
-
-            result.computeIfAbsent(
-                    first.venueId(),
-                    ignored -> new ArrayList<>()
-            ).add(availableSpace);
         }
 
         return result;
@@ -1404,28 +1236,89 @@ public class VenueSearchRepositoryImpl
                 : second;
     }
 
-    // ============================================================
-    // Internal records
-    // ============================================================
+    private Map<UUID, Map<LocalDate, AvailableSpace>>
+    buildAvailabilityByEventSpace(
+            List<EventSpaceAvailabilityRow> rows) {
 
-    private record VenueRow(
-            UUID venueId,
-            String name,
-            String slug,
-            String description,
-            String address,
-            String city,
-            Double latitude,
-            Double longitude,
-            Double averageRating,
-            Integer reviewCount
-    ) {
+        Map<UUID, Map<LocalDate, AvailableSpace>> result =
+                new LinkedHashMap<>();
+
+        Map<LocalDate, List<EventSpaceAvailabilityRow>> rowsByDate =
+                rows.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        EventSpaceAvailabilityRow::availableDate,
+                                        TreeMap::new,
+                                        Collectors.toList()
+                                )
+                        );
+
+        for (Map.Entry<LocalDate, List<EventSpaceAvailabilityRow>> entry
+                : rowsByDate.entrySet()) {
+
+            LocalDate availableDate = entry.getKey();
+
+            List<AvailableSpace> availableSpaces =
+                    buildAvailableSpaces(
+                            entry.getValue(),
+                            availableDate
+                    );
+
+            for (AvailableSpace space : availableSpaces) {
+                result.computeIfAbsent(
+                                space.eventSpaceId(),
+                                ignored -> new TreeMap<>()
+                        )
+                        .put(
+                                availableDate,
+                                space
+                        );
+            }
+        }
+
+        return result;
+    }
+
+    private List<AvailableDate> buildAvailableDatesForEventSpace(
+            Map<LocalDate, AvailableSpace> dates,
+            LocalDate requestedDate) {
+
+        return dates.entrySet()
+                .stream()
+                .sorted(
+                        Comparator
+                                .comparingLong(
+                                        (Map.Entry<LocalDate, AvailableSpace> entry) ->
+                                                Math.abs(
+                                                        ChronoUnit.DAYS.between(
+                                                                requestedDate,
+                                                                entry.getKey()
+                                                        )
+                                                )
+                                )
+                                .thenComparing(Map.Entry::getKey)
+                )
+                .map(entry -> {
+
+                    AvailableSpace space = entry.getValue();
+
+                    return new AvailableDate(
+                            entry.getKey(),
+                            space.availableHours(),
+                            space.availableSlots()
+                    );
+                })
+                .toList();
     }
 
     private record EventSpaceAvailabilityRow(
             UUID venueId,
+            String address,
+            Double averageRating,
+            Integer reviewCount,
             UUID eventSpaceId,
             String eventSpaceName,
+            String description,
             Integer capacityMin,
             Integer capacityMax,
             String bookingMode,
@@ -1445,4 +1338,5 @@ public class VenueSearchRepositoryImpl
             LocalDateTime end
     ) {
     }
+
 }

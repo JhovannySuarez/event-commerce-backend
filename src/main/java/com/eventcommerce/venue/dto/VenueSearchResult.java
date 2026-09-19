@@ -4,17 +4,17 @@ import java.util.List;
 import java.util.UUID;
 
 public record VenueSearchResult(
+        UUID eventSpaceId,
+        String eventSpaceName,
         UUID venueId,
-        String venueName,
-        String slug,
         String description,
         String address,
-        String city,
-        Double latitude,
-        Double longitude,
         Double averageRating,
         Integer reviewCount,
-        List<AvailableSpace> availableSpaces,
+        Integer capacityMin,
+        Integer capacityMax,
+        String bookingMode,
+        Integer minimumHours,
         List<AvailableDate> availableDates
 ) {
 }
